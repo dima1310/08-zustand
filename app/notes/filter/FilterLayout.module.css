@@ -1,0 +1,29 @@
+.layout {
+  display: flex;
+  min-height: 100vh;
+  gap: 1rem;
+}
+
+.sidebar {
+  flex: 0 0 250px;
+  background-color: #f8f9fa;
+  padding: 1rem;
+  border-right: 1px solid #dee2e6;
+}
+
+.content {
+  flex: 1;
+  padding: 1rem;
+  overflow-x: auto;
+}
+
+@media (max-width: 768px) {
+  .layout {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    flex: none;
+    order: -1;
+  }
+}
