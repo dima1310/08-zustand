@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createNote } from "@/lib/api";
 import type { CreateNotePayload } from "@/types/note";
+import { useNoteStore } from "@/lib/store/noteStore";
 import css from "./NoteForm.module.css";
 
 interface NoteFormProps {
@@ -29,18 +30,70 @@ export default function NoteForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
+  // Zustand store
+  const { draft, setDraft, clearDraft } = useNoteStore();
+
+  // Локальний стан для полів форми
+  const [formData, setFormData] = useState({
+    title: "",
+    content: "",
+    tag: "Todo",
+  });
+
+  // Ініціалізація форми при монтуванні компонента
+  useEffect(() => {
+    if (isEditing && initialData) {
+      // Для редагування використовуємо дані нотатки
+      setFormData({
+        title: initialData.title || "",
+        content: initialData.content || "",
+        tag: initialData.tag || "Todo",
+      });
+    } else if (!isEditing) {
+      // Для створення нової нотатки перевіряємо draft
+      const hasDraft = draft.title || draft.content || draft.tag !== "Todo";
+      if (hasDraft) {
+        // Завантажуємо збережений draft
+        setFormData(draft);
+      } else {
+        // Використовуємо початковий стан
+        setFormData({
+          title: "",
+          content: "",
+          tag: "Todo",
+        });
+      }
+    }
+  }, [isEditing, initialData, draft]);
+
+  // Обробник зміни полів форми
+  const handleFieldChange = (field: string, value: string) => {
+    const newFormData = { ...formData, [field]: value };
+    setFormData(newFormData);
+
+    // Зберігаємо в draft тільки для нових нотаток
+    if (!isEditing) {
+      setDraft({ [field]: value });
+    }
+  };
+
   const { mutate: createNoteMutation } = useMutation({
     mutationFn: createNote,
     onSuccess: (createdNote) => {
+      // Очищуємо draft після успішного створення
+      if (!isEditing) {
+        clearDraft();
+      }
+
       queryClient.invalidateQueries({
         queryKey: ["notes"],
         exact: false,
       });
+
       if (onClose) {
         onClose();
       } else {
         // Якщо редагуємо, переходимо до нотатки, інакше до списку
-        // Для нової нотатки використовуємо ID з відповіді сервера
         const redirectPath =
           isEditing && noteId
             ? `/notes/${noteId}`
@@ -63,24 +116,20 @@ export default function NoteForm({
   });
 
   // Валідація форми
-  const validateForm = (formData: FormData): Record<string, string> => {
+  const validateForm = (data: typeof formData): Record<string, string> => {
     const errors: Record<string, string> = {};
 
-    const title = formData.get("title") as string;
-    const tag = formData.get("tag") as string;
-    const content = formData.get("content") as string;
-
-    if (!title || title.trim().length < 3) {
+    if (!data.title || data.title.trim().length < 3) {
       errors.title = "Title must be at least 3 characters";
-    } else if (title.trim().length > 50) {
+    } else if (data.title.trim().length > 50) {
       errors.title = "Title must be at most 50 characters";
     }
 
-    if (!tag) {
+    if (!data.tag) {
       errors.tag = "Tag is required";
     }
 
-    if (content && content.length > 500) {
+    if (data.content && data.content.length > 500) {
       errors.content = "Content must be at most 500 characters";
     }
 
@@ -93,8 +142,6 @@ export default function NoteForm({
     setIsSubmitting(true);
     setFormErrors({});
 
-    const formData = new FormData(event.currentTarget);
-
     // Валідація
     const errors = validateForm(formData);
     if (Object.keys(errors).length > 0) {
@@ -104,14 +151,10 @@ export default function NoteForm({
     }
 
     try {
-      const title = formData.get("title") as string;
-      const content = formData.get("content") as string;
-      const tag = formData.get("tag") as string;
-
       const noteData: CreateNotePayload = {
-        title: title.trim(),
-        content: content.trim(),
-        tag: tag as CreateNotePayload["tag"],
+        title: formData.title.trim(),
+        content: formData.content.trim(),
+        tag: formData.tag as CreateNotePayload["tag"],
       };
 
       // Якщо редагуємо, додаємо ID нотатки для майбутньої логіки оновлення
@@ -129,43 +172,30 @@ export default function NoteForm({
     }
   };
 
-  // Функція збереження чернетки
-  const handleSaveDraft = (form: HTMLFormElement) => {
-    const formData = new FormData(form);
+  // Функція збереження чернетки (додаткова кнопка)
+  const handleSaveDraft = () => {
+    if (!isEditing) {
+      setDraft(formData);
 
-    const title = formData.get("title") as string;
-    const content = formData.get("content") as string;
-    const tag = formData.get("tag") as string;
+      // Візуальний фідбек
+      const draftButton = document.querySelector(
+        '[data-action="draft"]'
+      ) as HTMLButtonElement;
+      if (draftButton) {
+        const originalText = draftButton.textContent;
+        draftButton.textContent = "Saved!";
+        draftButton.style.background = "#10b981";
 
-    const draftData = {
-      id: noteId, // Використовуємо noteId для ідентифікації чернетки
-      title: title.trim(),
-      content: content.trim(),
-      tag,
-      isEditing,
-      savedAt: new Date().toISOString(),
-    };
-
-    // Тут буде інтеграція з Zustand для збереження чернетки
-    console.log("Draft saved:", draftData);
-
-    // Тимчасове повідомлення користувачу
-    const draftButton = form.querySelector(
-      '[data-action="draft"]'
-    ) as HTMLButtonElement;
-    if (draftButton) {
-      const originalText = draftButton.textContent;
-      draftButton.textContent = "Saved!";
-      draftButton.style.background = "#10b981";
-
-      setTimeout(() => {
-        draftButton.textContent = originalText;
-        draftButton.style.background = "";
-      }, 2000);
+        setTimeout(() => {
+          draftButton.textContent = originalText;
+          draftButton.style.background = "";
+        }, 2000);
+      }
     }
   };
 
   const handleCancel = () => {
+    // НЕ очищуємо draft при скасуванні
     if (onClose) {
       onClose();
     } else {
@@ -182,7 +212,8 @@ export default function NoteForm({
             id="title"
             name="title"
             type="text"
-            defaultValue={initialData?.title || ""}
+            value={formData.title}
+            onChange={(e) => handleFieldChange("title", e.target.value)}
             className={css.input}
             placeholder="Enter note title..."
           />
@@ -197,7 +228,8 @@ export default function NoteForm({
             id="content"
             name="content"
             rows={8}
-            defaultValue={initialData?.content || ""}
+            value={formData.content}
+            onChange={(e) => handleFieldChange("content", e.target.value)}
             className={css.textarea}
             placeholder="Write your note content here..."
           />
@@ -211,12 +243,10 @@ export default function NoteForm({
           <select
             id="tag"
             name="tag"
+            value={formData.tag}
+            onChange={(e) => handleFieldChange("tag", e.target.value)}
             className={css.select}
-            defaultValue={initialData?.tag || ""}
           >
-            <option value="" disabled>
-              Select a tag
-            </option>
             <option value="Todo">Todo</option>
             <option value="Work">Work</option>
             <option value="Personal">Personal</option>
@@ -242,20 +272,17 @@ export default function NoteForm({
             Cancel
           </button>
 
-          <button
-            type="button"
-            className={css.draftButton}
-            onClick={(e) => {
-              const form = e.currentTarget.closest("form") as HTMLFormElement;
-              if (form) {
-                handleSaveDraft(form);
-              }
-            }}
-            disabled={isSubmitting}
-            data-action="draft"
-          >
-            Save Draft
-          </button>
+          {!isEditing && (
+            <button
+              type="button"
+              className={css.draftButton}
+              onClick={handleSaveDraft}
+              disabled={isSubmitting}
+              data-action="draft"
+            >
+              Save Draft
+            </button>
+          )}
 
           <button
             type="submit"
