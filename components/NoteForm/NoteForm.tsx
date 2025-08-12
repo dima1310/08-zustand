@@ -23,42 +23,60 @@ export default function NoteForm({ onClose, initialData }: NoteFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
-  // Zustand store - використовуємо НАПРЯМУ для управління формою
-  const { draft, setDraft, clearDraft } = useNoteStore();
+  const { draft, setDraft, clearDraft, _hasHydrated } = useNoteStore();
 
-  // Ініціалізація draft при монтуванні компонента (тільки якщо draft порожній)
+  const [localDraft, setLocalDraft] = useState({
+    title: "",
+    content: "",
+    tag: "Todo",
+  });
+
   useEffect(() => {
-    if (initialData) {
-      // Якщо є initialData (для редагування), ігноруємо draft
-      return;
+    if (_hasHydrated) {
+      const hasSavedDraft =
+        draft.title || draft.content || draft.tag !== "Todo";
+      if (!hasSavedDraft && !initialData) {
+        setLocalDraft({
+          title: "",
+          content: "",
+          tag: "Todo",
+        });
+      } else {
+        setLocalDraft(draft);
+      }
     }
+  }, [_hasHydrated, draft, initialData]);
 
-    // Для нової нотатки: якщо draft порожній, ініціалізуємо початковими значеннями
-    const isDraftEmpty = !draft.title && !draft.content && draft.tag === "Todo";
-    if (isDraftEmpty) {
-      // Draft вже має правильні початкові значення з initialDraft
-      // Нічого робити не потрібно
-    }
-  }, [initialData, draft]);
-
-  // Обробники зміни полів - напряму оновлюють draft
   const handleTitleChange = (value: string) => {
-    setDraft({ title: value });
+    setLocalDraft((prev) => ({ ...prev, title: value }));
+    if (_hasHydrated && !initialData) {
+      setDraft({ title: value });
+    }
   };
 
   const handleContentChange = (value: string) => {
-    setDraft({ content: value });
+    setLocalDraft((prev) => ({ ...prev, content: value }));
+    if (_hasHydrated && !initialData) {
+      setDraft({ content: value });
+    }
   };
 
   const handleTagChange = (value: string) => {
-    setDraft({ tag: value });
+    setLocalDraft((prev) => ({ ...prev, tag: value }));
+    if (_hasHydrated && !initialData) {
+      setDraft({ tag: value });
+    }
   };
 
   const { mutate: createNoteMutation } = useMutation({
     mutationFn: createNote,
     onSuccess: () => {
-      // Очищуємо draft після успішного створення
       clearDraft();
+      setLocalDraft({
+        title: "",
+        content: "",
+        tag: "Todo",
+      });
 
       queryClient.invalidateQueries({
         queryKey: ["notes"],
@@ -68,7 +86,6 @@ export default function NoteForm({ onClose, initialData }: NoteFormProps) {
       if (onClose) {
         onClose();
       } else {
-        // Повертаємося на попередній маршрут
         router.back();
       }
     },
@@ -81,34 +98,32 @@ export default function NoteForm({ onClose, initialData }: NoteFormProps) {
     },
   });
 
-  // Валідація форми
   const validateForm = (): Record<string, string> => {
     const errors: Record<string, string> = {};
+    const currentDraft = _hasHydrated && !initialData ? draft : localDraft;
 
-    if (!draft.title || draft.title.trim().length < 3) {
+    if (!currentDraft.title || currentDraft.title.trim().length < 3) {
       errors.title = "Title must be at least 3 characters";
-    } else if (draft.title.trim().length > 50) {
+    } else if (currentDraft.title.trim().length > 50) {
       errors.title = "Title must be at most 50 characters";
     }
 
-    if (!draft.tag) {
+    if (!currentDraft.tag) {
       errors.tag = "Tag is required";
     }
 
-    if (draft.content && draft.content.length > 500) {
+    if (currentDraft.content && currentDraft.content.length > 500) {
       errors.content = "Content must be at most 500 characters";
     }
 
     return errors;
   };
 
-  // Основна функція обробки форми
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsSubmitting(true);
     setFormErrors({});
 
-    // Валідація
     const errors = validateForm();
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
@@ -117,10 +132,11 @@ export default function NoteForm({ onClose, initialData }: NoteFormProps) {
     }
 
     try {
+      const currentDraft = _hasHydrated && !initialData ? draft : localDraft;
       const noteData: CreateNotePayload = {
-        title: draft.title.trim(),
-        content: draft.content.trim(),
-        tag: draft.tag as CreateNotePayload["tag"],
+        title: currentDraft.title.trim(),
+        content: currentDraft.content.trim(),
+        tag: currentDraft.tag as CreateNotePayload["tag"],
       };
 
       createNoteMutation(noteData);
@@ -131,9 +147,11 @@ export default function NoteForm({ onClose, initialData }: NoteFormProps) {
     }
   };
 
-  // Функція збереження чернетки (додаткова кнопка)
   const handleSaveDraft = () => {
-    // Дані вже збережені в реальному часі, просто показуємо фідбек
+    if (_hasHydrated && !initialData) {
+      setDraft(localDraft);
+    }
+
     const draftButton = document.querySelector(
       '[data-action="draft"]'
     ) as HTMLButtonElement;
@@ -150,7 +168,6 @@ export default function NoteForm({ onClose, initialData }: NoteFormProps) {
   };
 
   const handleCancel = () => {
-    // НЕ очищуємо draft при скасуванні
     if (onClose) {
       onClose();
     } else {
@@ -158,10 +175,12 @@ export default function NoteForm({ onClose, initialData }: NoteFormProps) {
     }
   };
 
-  // Використовуємо значення напряму з draft (або initialData для редагування)
-  const titleValue = initialData?.title ?? draft.title;
-  const contentValue = initialData?.content ?? draft.content;
-  const tagValue = initialData?.tag ?? draft.tag;
+  const titleValue =
+    initialData?.title ?? (_hasHydrated ? draft.title : localDraft.title);
+  const contentValue =
+    initialData?.content ?? (_hasHydrated ? draft.content : localDraft.content);
+  const tagValue =
+    initialData?.tag ?? (_hasHydrated ? draft.tag : localDraft.tag);
 
   return (
     <div className={css.formContainer}>
