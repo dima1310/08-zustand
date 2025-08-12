@@ -1,15 +1,14 @@
 "use client";
 
 import React, { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
 import { useDebounce } from "use-debounce";
 import { fetchNotes } from "@/lib/api";
 import type { FetchNotesResponse } from "@/lib/api";
 import NoteList from "@/components/NoteList/NoteList";
 import Pagination from "@/components/Pagination/Pagination";
 import SearchBox from "@/components/SearchBox/SearchBox";
-import Modal from "@/components/Modal/Modal";
-import NoteForm from "@/components/NoteForm/NoteForm";
 import css from "./NotesPage.module.css";
 
 interface NotesClientProps {
@@ -18,11 +17,8 @@ interface NotesClientProps {
 }
 
 export default function NotesClient({ tag, initialData }: NotesClientProps) {
-  const queryClient = useQueryClient();
-
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
-  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const [debouncedSearch] = useDebounce(search, 500);
 
@@ -50,14 +46,6 @@ export default function NotesClient({ tag, initialData }: NotesClientProps) {
     setPage(selected + 1);
   };
 
-  const openModal = () => setIsModalOpen(true);
-  const closeModal = () => setIsModalOpen(false);
-
-  const handleNoteCreated = () => {
-    queryClient.invalidateQueries({ queryKey: ["notes"] });
-    closeModal();
-  };
-
   return (
     <div className={css.app}>
       <div className={css.header}>
@@ -68,9 +56,9 @@ export default function NotesClient({ tag, initialData }: NotesClientProps) {
 
       <header className={css.toolbar}>
         <SearchBox value={search} onChange={handleSearchChange} />
-        <button className={css.button} onClick={openModal}>
+        <Link href="/notes/action/create" className={css.button}>
           Create note +
-        </button>
+        </Link>
       </header>
 
       {isLoading && <p>Loading...</p>}
@@ -95,12 +83,6 @@ export default function NotesClient({ tag, initialData }: NotesClientProps) {
         </>
       ) : (
         !isLoading && <div className={css.noNotes}>No notes found</div>
-      )}
-
-      {isModalOpen && (
-        <Modal onClose={closeModal}>
-          <NoteForm onClose={handleNoteCreated} />
-        </Modal>
       )}
 
       {isFetching && !isLoading && <p>Updating...</p>}
