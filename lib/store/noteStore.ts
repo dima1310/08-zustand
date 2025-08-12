@@ -36,7 +36,6 @@ export const useNoteStore = create<NoteStore>()(
     }),
     {
       name: "note-draft-storage", // localStorage key
-      // Можна додати конфігурацію для кращого контролю
       partialize: (state) => ({ draft: state.draft }),
     }
   )
